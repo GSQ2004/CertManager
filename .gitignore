@@ -28,3 +28,11 @@ local.properties
 
 # Explicitly requested distributable; all other APKs remain ignored.
 !downloads/CertManager-debug.apk
+
+# Native intermediates and private operation data
+**/.cxx/
+*.removed
+*.restore
+*.log
+
+!app/src/test/resources/non-ca.der

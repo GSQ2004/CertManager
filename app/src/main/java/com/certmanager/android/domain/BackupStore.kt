@@ -6,7 +6,7 @@ import java.nio.file.StandardCopyOption
 import java.util.UUID
 
 data class Backup(val id: String, val createdAt: Long, val source: CertSource, val userId: Int,
-                  val locator: String, val fingerprint: String, val rawDigest: String, val raw: ByteArray) {
+                  val locator: String, val fingerprint: String, val rawDigest: String, val raw: ByteArray, val fileMetadata: FileMetadata? = null) {
     val certificate get() = Certificates.parse(raw)
 }
 
@@ -15,24 +15,33 @@ object BackupCodec {
         validate(backup)
         return ByteArrayOutputStream().also { stream ->
             DataOutputStream(stream).use { out ->
-                out.writeUTF("CertManagerBackup/1"); out.writeUTF(backup.id); out.writeLong(backup.createdAt)
+                out.writeUTF("CertManagerBackup/2"); out.writeUTF(backup.id); out.writeLong(backup.createdAt)
                 out.writeUTF(backup.source.name); out.writeInt(backup.userId); out.writeUTF(backup.locator)
                 out.writeUTF(backup.fingerprint); out.writeUTF(backup.rawDigest)
+                out.writeUTF(backup.fileMetadata?.header.orEmpty())
                 out.writeInt(backup.raw.size); out.write(backup.raw)
+                out.writeUTF(metadataDigest(backup))
             }
         }.toByteArray()
     }
     fun decode(bytes: ByteArray): Backup {
         require(bytes.size <= MAX_CERT_BYTES + 8192) { "Backup too large" }
         return DataInputStream(ByteArrayInputStream(bytes)).use { input ->
-            require(input.readUTF() == "CertManagerBackup/1") { "Unknown backup format" }
+            val version = input.readUTF()
+            require(version in listOf("CertManagerBackup/1", "CertManagerBackup/2")) { "Unknown backup format" }
             val id = input.readUTF(); val date = input.readLong(); val source = CertSource.valueOf(input.readUTF())
             val user = input.readInt(); val path = input.readUTF(); val fingerprint = input.readUTF(); val hash = input.readUTF()
+            val metadata = if (version.endsWith("/2")) input.readUTF().ifEmpty { null }?.let(::FileMetadata) else null
             val size = input.readInt(); require(size in 1..MAX_CERT_BYTES)
-            val raw = ByteArray(size); input.readFully(raw); require(input.read() == -1)
-            Backup(id, date, source, user, path, fingerprint, hash, raw).also(::validate)
+            val raw = ByteArray(size); input.readFully(raw)
+            val backup = Backup(id, date, source, user, path, fingerprint, hash, raw, metadata)
+            if (version.endsWith("/2")) require(input.readUTF() == metadataDigest(backup)) { "Backup metadata integrity mismatch" }
+            require(input.read() == -1)
+            backup.also(::validate)
         }
     }
+    private fun metadataDigest(b: Backup): String = Certificates.digest(listOf(b.id, b.createdAt.toString(), b.source.name,
+        b.userId.toString(), b.locator, b.fingerprint, b.rawDigest, b.fileMetadata?.header.orEmpty()).joinToString("\u0000").toByteArray(Charsets.UTF_8))
     fun validate(backup: Backup) {
         require(Regex("[a-f0-9-]{36}").matches(backup.id) && UUID.fromString(backup.id).toString() == backup.id)
         require((backup.userId >= 0 || (backup.source == CertSource.MODULE && backup.userId == -1)) && backup.locator.length <= 512)
@@ -51,7 +60,7 @@ class BackupStore(private val directory: File) {
     @Synchronized fun create(record: CertificateRecord): Backup {
         check(directory.isDirectory || directory.mkdirs()) { "Cannot create private backup directory" }
         val backup = Backup(UUID.randomUUID().toString(), System.currentTimeMillis(), record.source, record.userId,
-            record.locator, record.fingerprint, Certificates.digest(record.raw), record.raw.copyOf())
+            record.locator, record.fingerprint, Certificates.digest(record.raw), record.raw.copyOf(), record.fileMetadata)
         val target = file(backup.id)
         val temp = File.createTempFile("backup-", ".tmp", directory)
         try {
@@ -79,5 +88,6 @@ class BackupStore(private val directory: File) {
     fun list(): List<Backup> = inspect().let { listing ->
         check(listing.errors.isEmpty()) { listing.errors.joinToString("\n") }; listing.valid
     }
+    fun privateFile(id: String): File { load(id); return file(id) }
     fun bytes(id: String): ByteArray = BackupCodec.encode(load(id))
 }

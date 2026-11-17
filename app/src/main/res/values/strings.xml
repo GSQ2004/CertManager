@@ -117,7 +117,7 @@
     <string name="cleanup_result">最近一次已确认的清理结果</string>
     <string name="cleanup_result_counts">确认移除 %1$d · 跳过 %2$d · 失败 %3$d · 未验证／中断 %4$d</string>
     <string name="cleanup_saved_copies">原始来源备份：%1$d 份</string>
-    <string name="cleanup_manual_reason">此来源没有已验证的应用内卸载方式。请在对应 Android 资料的系统证书设置中核对指纹并手动卸载；不直接删除文件或修改数据库。</string>
+    <string name="cleanup_manual_reason">此来源未满足自动卸载安全条件，请核对下方原因。可在对应资料的系统证书设置中手动操作；未知来源和模块文件不会被修改。</string>
     <string name="cleanup_review_counts">本轮可见残留用户 CA：%1$d\n原目标仍存在：%2$d\n已移除目标再次出现：%3$d\n可能重新注入的指纹线索：%4$d\n重复位置／跨资料相同指纹组：%5$d</string>
     <string name="cleanup_reboot_detected">系统启动计数已变化；这次扫描位于记录之后的启动周期。</string>
     <string name="cleanup_same_boot">未检测到相对最近清理记录的重启。</string>
@@ -132,7 +132,7 @@
     <string name="cleanup_disabled_count">禁用记录（仅诊断，不参与删除）：%1$d</string>
     <string name="cleanup_coverage">展开／收起存储覆盖和禁用记录</string>
     <string name="cleanup_duplicate">相同指纹：%1$s\n用户：%2$s\n位置：%3$s\n可能是别名、挂载或跨资料副本，不据此批量删文件。</string>
-    <string name="cleanup_safe">可安全自动卸载：公开设备管理 API</string>
+    <string name="cleanup_safe">可执行：Root 文件级卸载或设备管理 API（确认时复核）</string>
     <string name="cleanup_unsafe">无法安全自动卸载：只读／需系统设置</string>
     <string name="cleanup_status_pending">未完成／中断，需重新扫描</string>
     <string name="cleanup_status_removed">重新检查：目标用户 CA 已移除</string>
@@ -146,4 +146,19 @@
     <string name="cleanup_second_body">已验证原始来源备份 %1$d 份，覆盖用户 CA %2$d 张。\n本次自动卸载 %3$d 张；跳过 %4$d 张。下面列出用户、证书指纹和备份编号。\n\n仅对下列已确认目标操作；确认后还会复核全部备份与指纹，任一失败都不会开始删除。</string>
     <string name="cleanup_ack">我已核对范围，并了解 VPN 和企业网络可能受到影响。</string>
     <string name="cleanup_execute">确认执行清理</string>
+    <string name="root_uninstall">Root 文件级卸载</string>
+    <string name="root_candidate">传统文件来源 · Root 运行时复核后可操作</string>
+    <string name="root_file_moved">活动文件已移出；请重启后复查，尚未确认警告消失</string>
+    <string name="root_restored">文件及 UID/GID、权限和 SELinux 上下文已恢复并校验；可能需要重启</string>
+    <string name="root_restore">确认 Root 文件级恢复</string>
+    <string name="root_restore_risk">已校验备份与目标用户。恢复会扩大信任范围；只在目标不存在且无重复证书时原子发布。权限或 SELinux 恢复失败将中止，备份保留。此功能待真机验证。</string>
+    <string name="root_uninstall_risk">Root 文件级卸载将证书移至同一用户目录下的 root 私有隔离区。已备份并验证原始字节与文件元数据；确认后再次校验文件身份及指纹。系统信任缓存可能延迟更新，请重启后复查。不会自动重启，也不保证系统警告立即消失。应用实现待真机验证。</string>
+    <string name="root_stage_counts">文件移出 %1$d · 重启后复查通过 %2$d</string>
+    <string name="root_stages">备份校验 %1$s · 文件移出 %2$s · 活动目录复查 %3$s · 重启后复查 %4$s</string>
+    <string name="warning_unconfirmed">尚未由用户确认 HyperOS 警告消失</string>
+    <string name="warning_confirmed">用户已手动确认 HyperOS 警告消失（非自动检测）</string>
+    <string name="warning_confirm_action">我已核实系统警告消失</string>
+    <string name="public_key">公钥算法</string>
+    <string name="extended_usage">Extended Key Usage</string>
+    <string name="backup_all">批量备份用户 CA</string>
 </resources>

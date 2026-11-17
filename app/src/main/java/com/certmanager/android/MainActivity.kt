@@ -101,7 +101,7 @@ class MainActivity : ComponentActivity() {
         super.onSaveInstanceState(outState)
     }
     override fun attachBaseContext(newBase: android.content.Context) {
-        val language = newBase.getSharedPreferences("appearance", MODE_PRIVATE).getString("language", "") ?: ""
+        val language = newBase.getSharedPreferences("appearance", MODE_PRIVATE).getString("language", "zh") ?: "zh"
         val configuration = android.content.res.Configuration(newBase.resources.configuration)
         if (language.isNotBlank()) configuration.setLocale(java.util.Locale.forLanguageTag(language))
         super.attachBaseContext(newBase.createConfigurationContext(configuration))
@@ -143,6 +143,7 @@ class MainActivity : ComponentActivity() {
                         is UiEvent.Message -> {
                             val id = when (event.key) {
                                 "backed_up" -> R.string.backed_up; "removed" -> R.string.removed
+                                "root_file_moved" -> R.string.root_file_moved; "root_restored" -> R.string.root_restored
                                 "installed" -> R.string.installed; else -> R.string.done
                             }
                             android.widget.Toast.makeText(this@MainActivity, id, android.widget.Toast.LENGTH_LONG).show()

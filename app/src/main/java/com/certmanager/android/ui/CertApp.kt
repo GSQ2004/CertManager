@@ -81,7 +81,7 @@ private fun date(value: Date): String = DateFormat.getDateTimeInstance(DateForma
                         val selected = state.selected
                         if (selected != null) {
                             BackHandler { model.select(null) }
-                            CertificateDetail(selected, state.loading, state.rootGranted, model)
+                            CertificateDetail(selected, state.loading, state.rootGranted, selected.key in state.safeCleanupKeys, model)
                         } else if (cleanupPage) {
                             BackHandler { cleanupPage = false }
                             CleanupScreen(state, model)
@@ -102,11 +102,31 @@ private fun date(value: Date): String = DateFormat.getDateTimeInstance(DateForma
             state.deleteTicket?.let { ticket -> AlertDialog(onDismissRequest = model::cancelDelete,
                 title = { Text(stringResource(R.string.confirm_delete)) }, text = {
                     Text(stringResource(R.string.confirm_delete_body, ticket.backupId, ticket.record.fingerprint,
-                        stringResource(if (ticket.direct) R.string.direct_delete else R.string.settings_delete)), Modifier.verticalScroll(rememberScrollState()))
+                        stringResource(if (ticket.record.fileMetadata != null && ticket.direct) R.string.root_uninstall else if (ticket.direct) R.string.direct_delete else R.string.settings_delete) +
+                            "\n${ticket.record.name}\nUser ${ticket.record.userId}\n${ticket.record.locator}"), Modifier.verticalScroll(rememberScrollState()))
                 }, confirmButton = { TextButton(onClick = model::confirmDelete, enabled = !state.loading) { Text(stringResource(R.string.confirm)) } },
                 dismissButton = { TextButton(onClick = model::cancelDelete) { Text(stringResource(R.string.cancel)) } }) }
+            state.rootRestoreTicket?.let { ticket -> AlertDialog(onDismissRequest = model::cancelRootRestore,
+                title = { Text(stringResource(R.string.root_restore)) }, text = {
+                    Text("${stringResource(R.string.root_restore_risk)}\n${ticket.backup.certificate.subjectX500Principal.name}\n${ticket.backup.fingerprint}\nUser ${ticket.backup.userId}\n${ticket.backup.locator}\nUID=${ticket.backup.fileMetadata?.uid} GID=${ticket.backup.fileMetadata?.gid} mode=${ticket.backup.fileMetadata?.mode?.toString(8)}\n${ticket.backup.fileMetadata?.context}", Modifier.verticalScroll(rememberScrollState()))
+                }, confirmButton = { TextButton(onClick = model::confirmRootRestore, enabled = !state.loading) { Text(stringResource(R.string.confirm)) } },
+                dismissButton = { TextButton(onClick = model::cancelRootRestore) { Text(stringResource(R.string.cancel)) } }) }
             state.installCandidate?.let { candidate -> AlertDialog(onDismissRequest = model::cancelInstall,
-                title = { Text(stringResource(R.string.confirm_install)) }, text = { Text(stringResource(R.string.install_help, candidate.fingerprint), Modifier.verticalScroll(rememberScrollState())) },
+                title = { Text(stringResource(R.string.confirm_install)) }, text = {
+                    val certificate = remember(candidate.fingerprint) { Certificates.parse(candidate.raw) }
+                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.install_help, candidate.fingerprint))
+                        Detail(R.string.subject, certificate.subjectX500Principal.name)
+                        Detail(R.string.issuer, certificate.issuerX500Principal.name)
+                        Detail(R.string.serial, certificate.serialNumber.toString(16))
+                        Detail(R.string.validity, "${date(certificate.notBefore)} → ${date(certificate.notAfter)}")
+                        Detail(R.string.basic_constraints, certificate.basicConstraints.toString())
+                        Detail(R.string.key_usage, certificate.keyUsage?.joinToString() ?: "—")
+                        Detail(R.string.extended_usage, runCatching { certificate.extendedKeyUsage?.joinToString() }.getOrNull() ?: "—")
+                        Detail(R.string.signature, certificate.sigAlgName)
+                        Detail(R.string.public_key, certificate.publicKey.algorithm)
+                    }
+                },
                 confirmButton = { TextButton(onClick = model::confirmInstall, enabled = !state.loading) { Text(stringResource(R.string.confirm)) } },
                 dismissButton = { TextButton(onClick = model::cancelInstall) { Text(stringResource(R.string.cancel)) } }) }
         }
@@ -118,6 +138,8 @@ private fun date(value: Date): String = DateFormat.getDateTimeInstance(DateForma
         Icon(Icons.Outlined.VerifiedUser, null, Modifier.size(44.dp), tint = MaterialTheme.colorScheme.primary)
         Text(stringResource(R.string.subtitle), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text(stringResource(R.string.android_version, Build.VERSION.RELEASE, Build.VERSION.SDK_INT), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(state.deviceDescription, style = MaterialTheme.typography.bodySmall)
+        Text("UID=${if (state.rootGranted) "0" else "—"} · SELinux: ${state.rootContext}", style = MaterialTheme.typography.bodySmall)
         RootCard(state, model)
         Button(onClick = onCleanup, Modifier.fillMaxWidth()) { Text(stringResource(R.string.cleanup_title)) }
         listOf(R.string.user_certs to state.records.count { it.source == CertSource.USER },
@@ -127,6 +149,10 @@ private fun date(value: Date): String = DateFormat.getDateTimeInstance(DateForma
         Info(stringResource(R.string.visibility))
         Text(stringResource(R.string.profile, model.repository.currentUserId), style = MaterialTheme.typography.bodySmall)
         Text(stringResource(R.string.detected_users, state.users.sorted().joinToString()), style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.root_log), style = MaterialTheme.typography.titleMedium)
+        model.repository.root.log().takeLast(3).asReversed().forEach {
+            Text("${date(Date(it.at))} · ${it.operation} · exit=${it.code} · timeout=${it.timedOut}", style = MaterialTheme.typography.bodySmall)
+        }
         OutlinedButton(onClick = model::openSettings, Modifier.fillMaxWidth(), enabled = !state.loading) { Text(stringResource(R.string.open_settings)) }
     }
 }
@@ -136,6 +162,7 @@ private fun date(value: Date): String = DateFormat.getDateTimeInstance(DateForma
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(stringResource(R.string.root_status), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(if (state.rootGranted) R.string.root_granted else if (state.rootRequested) R.string.root_denied else R.string.root_not_requested), fontWeight = FontWeight.Bold)
+            Text("su: ${state.suAvailable}", style = MaterialTheme.typography.bodySmall)
             Text(stringResource(R.string.root_help), style = MaterialTheme.typography.bodySmall)
             Button(onClick = model::requestRoot, enabled = !state.loading) { Text(stringResource(R.string.request_root)) }
         }
@@ -157,6 +184,7 @@ private fun date(value: Date): String = DateFormat.getDateTimeInstance(DateForma
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text(stringResource(if (system) R.string.system_certs else R.string.user_certs), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
         item { if (system) Info(stringResource(R.string.readonly_help)) else Button(onClick = { onImport(false) }, enabled = !busy && root) { Icon(Icons.Outlined.Add, null); Text(stringResource(R.string.import_cert)) } }
+        if (!system) item { TextButton(onClick = model::backupAll, enabled = !busy) { Text(stringResource(R.string.backup_all)) } }
         if (!system) item { OutlinedButton(onClick = onCleanup, enabled = !busy) { Text(stringResource(R.string.cleanup_all)) } }
         item { OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.search)) }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, singleLine = true) }
         item { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -186,12 +214,14 @@ private fun date(value: Date): String = DateFormat.getDateTimeInstance(DateForma
                 Text(stringResource(R.string.user_id, record.userId), style = MaterialTheme.typography.labelSmall)
                 Text(stringResource(if (record.expired) R.string.expired else if (record.valid) R.string.valid else R.string.not_yet_valid), style = MaterialTheme.typography.labelSmall, color = if (record.expired) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
             }
+            Text(record.locator, style = MaterialTheme.typography.labelSmall)
+            if (RootFilePolicy.eligible(record)) Text(stringResource(R.string.root_candidate), style = MaterialTheme.typography.labelSmall)
             Text(stringResource(if (record.trust == TrustState.DISABLED) R.string.disabled else if (record.observedByKeyStore) R.string.api_visible else R.string.file_only), style = MaterialTheme.typography.labelSmall)
         }
     }
 }
 
-@Composable private fun CertificateDetail(record: CertificateRecord, busy: Boolean, root: Boolean, model: CertViewModel) {
+@Composable private fun CertificateDetail(record: CertificateRecord, busy: Boolean, root: Boolean, safe: Boolean, model: CertViewModel) {
     val certificate = record.certificate
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
@@ -206,6 +236,8 @@ private fun date(value: Date): String = DateFormat.getDateTimeInstance(DateForma
         TextButton(onClick = { scope.launch { clipboard.setClipEntry(ClipEntry(android.content.ClipData.newPlainText("SHA-256", record.fingerprint))) }; android.widget.Toast.makeText(context, R.string.copied, android.widget.Toast.LENGTH_SHORT).show() }) { Icon(Icons.Outlined.ContentCopy, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.copy_fingerprint)) }
         Detail(R.string.basic_constraints, if (certificate.basicConstraints < 0) stringResource(R.string.not_ca) else stringResource(R.string.ca_constraint, if (certificate.basicConstraints == Int.MAX_VALUE) "∞" else certificate.basicConstraints.toString()))
         Detail(R.string.key_usage, certificate.keyUsage?.let { bits -> usages.filterIndexed { i, _ -> bits.getOrElse(i) { false } }.joinToString() } ?: stringResource(R.string.not_specified))
+        Detail(R.string.public_key, certificate.publicKey.algorithm)
+        Detail(R.string.extended_usage, runCatching { certificate.extendedKeyUsage?.joinToString() }.getOrNull() ?: "—")
         Detail(R.string.signature, "${certificate.sigAlgName}\n${certificate.sigAlgOID}")
         Detail(R.string.source, "${record.source.name} · ${if (record.source == CertSource.MODULE) stringResource(R.string.cleanup_global_module) else stringResource(R.string.user_id, record.userId)}\n${record.origins.joinToString("\n")}")
         Info(stringResource(if (record.trust == TrustState.DISABLED) R.string.disabled else R.string.unknown_trust))
@@ -213,9 +245,10 @@ private fun date(value: Date): String = DateFormat.getDateTimeInstance(DateForma
         OutlinedButton(onClick = { model.export(record, false) }, Modifier.fillMaxWidth(), enabled = !busy) { Text(stringResource(R.string.export_original)) }
         OutlinedButton(onClick = { model.export(record, true) }, Modifier.fillMaxWidth(), enabled = !busy) { Text(stringResource(R.string.export_pem)) }
         if (record.source == CertSource.USER) {
-            Info(stringResource(R.string.delete_help))
+            Info(stringResource(if (RootFilePolicy.eligible(record)) R.string.root_uninstall_risk else R.string.delete_help))
             OutlinedButton(onClick = { model.prepareDelete(record) }, Modifier.fillMaxWidth(), enabled = !busy && root,
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(stringResource(R.string.delete)) }
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(stringResource(if (RootFilePolicy.eligible(record) && safe) R.string.root_uninstall else R.string.delete)) }
+            if (!safe) Text(model.repository.uninstallBlockReason(record), style = MaterialTheme.typography.bodySmall)
             if (!root) Text(stringResource(R.string.root_denied), style = MaterialTheme.typography.bodySmall)
         }
         TextButton(onClick = model::openSettings, enabled = !busy) { Text(stringResource(R.string.open_settings)) }
@@ -235,8 +268,10 @@ private fun date(value: Date): String = DateFormat.getDateTimeInstance(DateForma
                     Text(backup.certificate.subjectX500Principal.name, style = MaterialTheme.typography.titleSmall)
                     Text(stringResource(R.string.backup_date, date(Date(backup.createdAt))), style = MaterialTheme.typography.bodySmall)
                     Text("${backup.source.name} · ${stringResource(R.string.user_id, backup.userId)}", style = MaterialTheme.typography.labelMedium)
+                    Text(backup.locator, style = MaterialTheme.typography.bodySmall)
+                    backup.fileMetadata?.let { Text("UID=${it.uid} GID=${it.gid} mode=${it.mode.toString(8)}\n${it.context}", style = MaterialTheme.typography.bodySmall) }
                     Detail(R.string.fingerprint, backup.fingerprint); Detail(R.string.backup_integrity, backup.rawDigest)
-                    if (backup.source == CertSource.USER) Button(onClick = { model.prepareRestore(backup) }, enabled = !state.loading && state.rootGranted && backup.userId == model.repository.currentUserId) { Text(stringResource(R.string.restore)) }
+                    if (backup.source == CertSource.USER) Button(onClick = { model.prepareRestore(backup) }, enabled = !state.loading && state.rootGranted && (backup.fileMetadata != null || backup.userId == model.repository.currentUserId)) { Text(stringResource(R.string.restore)) }
                     TextButton(onClick = { model.exportBackup(backup, true) }, enabled = !state.loading) { Text(stringResource(R.string.export_backup)) }
                     TextButton(onClick = { model.exportBackup(backup, false) }, enabled = !state.loading) { Text(stringResource(R.string.export_original)) }
                 }
@@ -255,7 +290,7 @@ private fun date(value: Date): String = DateFormat.getDateTimeInstance(DateForma
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.dynamic_color), Modifier.weight(1f)); Switch(dynamic, onDynamic, enabled = Build.VERSION.SDK_INT >= 31) }
         Text(stringResource(R.string.language), style = MaterialTheme.typography.titleMedium)
-        val selected = preferences.getString("language", "") ?: ""
+        val selected = preferences.getString("language", "zh") ?: "zh"
         listOf("" to stringResource(R.string.language_system), "zh" to "简体中文", "en" to "English").forEach { (code, label) ->
             Row(Modifier.fillMaxWidth().clickable(enabled = !state.loading) { preferences.edit { putString("language", code) }; (context as? Activity)?.recreate() }) {
                 RadioButton(selected == code, onClick = null); Text(label, Modifier.padding(12.dp))

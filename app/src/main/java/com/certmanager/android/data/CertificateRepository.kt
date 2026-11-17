@@ -12,6 +12,16 @@ import java.util.Base64
 class CertificateRepository(private val context: Context, val root: RootShell) : CleanupGateway {
     val currentUserId = Process.myUserHandle().hashCode()
     val backups = BackupStore(File(context.noBackupFilesDir, "certificates"))
+    private var lastInventory: ScanInventory? = null
+    private val rootReasons = mutableMapOf<String, String>()
+    val rootFiles = RootFileStore(context, root, backups) { fp, user ->
+        val inventory = scanInventory()
+        check(inventory.coverage.any { it.location == "/data/misc/user/$user/cacerts-added" && it.readable }) { "Original profile store unreadable" }
+        check(inventory.coverage.none { it.location.startsWith("/data/misc/user/$user/cacerts-added/") && !it.readable }) { "Original profile scan incomplete" }
+        Certificates.duplicate(inventory.records, fp, user)
+    }
+    val rootUninstaller = RootFileCertificateUninstaller(rootFiles, backups)
+    val rootRestorer = RootFileCertificateRestorer(rootFiles, backups)
     val operations = CertificateOperations(this, backups)
     val cleanupHistory = CleanupHistoryStore(File(context.noBackupFilesDir, "cleanup-history.properties"))
     val cleanup = CleanupCoordinator(this, backups, cleanupHistory)
@@ -107,7 +117,7 @@ class CertificateRepository(private val context: Context, val root: RootShell) :
         }
         val boot = runCatching { android.provider.Settings.Global.getInt(context.contentResolver, android.provider.Settings.Global.BOOT_COUNT, -1) }
             .getOrDefault(-1).takeIf { it >= 0 }?.let { "boot-count:$it" }
-        return ScanInventory(currentUserId, marked, users, coverage, disabled, modules, boot)
+        return ScanInventory(currentUserId, marked, users, coverage, disabled, modules, boot).also { lastInventory = it }
     }
     private fun list(directory: String): List<String>? {
         require(CertificatePaths.isDirectory(directory))
@@ -154,25 +164,50 @@ class CertificateRepository(private val context: Context, val root: RootShell) :
             val cert = keyStore().getCertificate(record.locator.removePrefix("keystore:")) as? X509Certificate ?: return null
             return record.copy(certificate = cert, raw = cert.encoded)
         }
+        if (RootFilePolicy.eligible(record) && root.authorized && rootFiles.available() && !moduleConflict(record)) {
+            val result = runCatching { rootFiles.snapshot(record) }
+            if (result.isSuccess) {
+                val snapshot = result.getOrNull() ?: return null
+                val certificate = Certificates.parse(snapshot.raw)
+                return record.copy(certificate = certificate, raw = snapshot.raw, fileMetadata = snapshot.metadata)
+            }
+            // Unsupported native boundary still permits a read-only byte backup, never file mutation.
+            rootReasons[record.key] = result.exceptionOrNull()?.message.orEmpty()
+        }
         val raw = read(record.locator) ?: return null
-        return record.copy(certificate = Certificates.parse(raw), raw = raw)
+        return record.copy(certificate = Certificates.parse(raw), raw = raw, fileMetadata = null)
+    }
+    private fun moduleConflict(record: CertificateRecord) = lastInventory?.observations?.any {
+        it.source == CertSource.MODULE && it.fingerprint == record.fingerprint
+    } == true
+    private fun rootEligible(record: CertificateRecord): Boolean {
+        if (!root.authorized || !RootFilePolicy.eligible(record) || !rootFiles.available() || moduleConflict(record)) return false
+        return runCatching { rootUninstaller.capture(record) }.onFailure { rootReasons[record.key] = it.message.orEmpty() }.isSuccess
     }
     override fun canUninstall(record: CertificateRecord): Boolean = root.authorized && record.source == CertSource.USER &&
-        record.userId == currentUserId && (record.observedByKeyStore || record.observedByCredentialService) && managesCredentials()
+        (rootEligible(record) || record.userId == currentUserId &&
+            (record.observedByKeyStore || record.observedByCredentialService) && managesCredentials())
     override fun uninstallBlockReason(record: CertificateRecord): String = when {
         record.source != CertSource.USER -> "System/module CA is read-only; excluded from user cleanup"
         !root.authorized -> "Root authorization required; no automatic removal"
-        record.userId != currentUserId -> "Open CertManager and certificate settings inside the original Android profile"
-        !managesCredentials() -> "No verified silent uninstall API: use system certificate settings; Root alone is insufficient"
-        else -> "Active credential service entry not observed; manual verification required"
+        moduleConflict(record) -> "Matching Root module CA found; inspect the module before changing its injected trust"
+        RootFilePolicy.eligible(record) -> rootReasons[record.key] ?: "Root helper unavailable or filesystem safety checks not satisfied; use system settings"
+        record.userId != currentUserId -> "Open system certificate settings in the original Android profile"
+        else -> "Credential service/unknown source: use supported system certificate management"
     }
     override fun uninstall(record: CertificateRecord) {
         check(root.verify()) { "Root authorization lost" }
         require(CertificatePaths.validLocator(record)) { "Invalid certificate source" }
-        check(canUninstall(record)) { "System settings required" }
+        if (record.fileMetadata != null && RootFilePolicy.eligible(record)) {
+            check(rootEligible(record)) { "Root file preflight changed; backup retained; no API fallback" }
+            rootUninstaller.uninstall(record)
+            return
+        }
+        check(!RootFilePolicy.eligible(record) || !rootEligible(record)) { "Prepare a verified file metadata backup first" }
+        check(record.userId == currentUserId && managesCredentials() &&
+            (record.observedByKeyStore || record.observedByCredentialService)) { "System settings required; no unsafe file fallback" }
         val fresh = reread(record) ?: error("Certificate is no longer available")
-        check(fresh.fingerprint == record.fingerprint) { "Certificate fingerprint changed" }
-        // Public Android API handles KeyChain bookkeeping; never remove a certificate file via su.
+        check(fresh.fingerprint == record.fingerprint)
         policy.uninstallCaCert(admin, fresh.certificate.encoded)
     }
     override fun installed(fingerprint: String, userId: Int): Boolean {

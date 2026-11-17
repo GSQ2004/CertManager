@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(certguard LANGUAGES CXX)
+add_library(certguard SHARED certguard.cpp)
+target_compile_features(certguard PRIVATE cxx_std_17)
+target_compile_options(certguard PRIVATE -Wall -Wextra -Werror -fstack-protector-strong)
+target_link_options(certguard PRIVATE -Wl,-z,relro,-z,now -Wl,-z,max-page-size=16384)

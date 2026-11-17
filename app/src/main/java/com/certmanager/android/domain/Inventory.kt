@@ -18,7 +18,7 @@ data class ScanInventory(
     val scannedAt: Long = System.currentTimeMillis()
 ) {
     val records: List<CertificateRecord> get() = observations.groupBy { it.key }.values.map { group ->
-        val primary = group.lastOrNull { !it.locator.startsWith("keystore:") && !it.locator.startsWith("credential:") } ?: group.first()
+        val primary = group.firstOrNull { RootFilePolicy.eligible(it) } ?: group.lastOrNull { !it.locator.startsWith("keystore:") && !it.locator.startsWith("credential:") } ?: group.first()
         primary.copy(observedByKeyStore = group.any { it.observedByKeyStore }, origins = group.flatMap { it.origins }.distinct(),
             observedByCredentialService = group.any { it.observedByCredentialService })
     }

@@ -20,7 +20,8 @@ data class CertificateRecord(
     val trust: TrustState = TrustState.UNKNOWN,
     val observedByKeyStore: Boolean = false,
     val origins: List<String> = listOf(locator),
-    val observedByCredentialService: Boolean = false
+    val observedByCredentialService: Boolean = false,
+    val fileMetadata: FileMetadata? = null
 ) {
     val fingerprint: String get() = Certificates.fingerprint(certificate.encoded)
     val name: String get() = certificate.subjectX500Principal.name
