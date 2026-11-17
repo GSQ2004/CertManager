@@ -25,3 +25,6 @@ local.properties
 !app/src/test/resources/test-ca.pem
 !app/src/test/resources/test-ca.der
 !app/src/test/resources/cleanup-ca.der
+
+# Explicitly requested distributable; all other APKs remain ignored.
+!downloads/CertManager-debug.apk

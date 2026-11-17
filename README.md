@@ -1,5 +1,17 @@
 # CertManager
 
+## 下载 Debug APK
+
+[CertManager-debug.apk](downloads/CertManager-debug.apk)（1.1.0，58,748,968 字节）。在 GitHub 文件页点击下载按钮获取；私有仓库需要有访问权限。
+
+校验文件：[SHA256SUMS.txt](downloads/SHA256SUMS.txt)。APK SHA-256：
+
+```text
+af1cab456da9457e8d9d3eeeb5bd87495c4b84ad255595d32e492ea5b6056d93
+```
+
+此包使用 Debug 签名，尚未经过 HyperOS 真机验收；功能和限制见下文与 `VALIDATION.md`。
+
 ## 1.1.0：用户 CA 清理
 
 首页新增“CA 安全警告处理”，用户证书页新增“清理全部用户 CA”入口。页面展示实际可见用户 CA 数量、当前环境可安全自动卸载数、跳过数、每张证书的 Subject / Issuer / SHA-256 / 用户 ID / 全部来源位置、备份状态、进度与逐项结果。
