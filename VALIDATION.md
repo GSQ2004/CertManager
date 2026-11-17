@@ -60,3 +60,7 @@ CleanupTests 另外验证 Root 批量部分失败、同指纹多文件逐张操�
 建议先在测试设备对可信测试 CA 验收：拒绝/允许/撤销 Root，核对字节与完整元数据备份，单张移出及取消，批量部分失败，元数据恢复，重复/覆盖拒绝，重启后再出现与模块诊断。系统 CA 和 APEX 必须保持只读；不自动重启。若无法确认读取覆盖、目录身份或上下文，保持失败/未确认，禁止虚报系统警告已消失。
 
 GitHub 运行和 Artifact 以本次 PR 的 Checks 为准。本地 APK 不是远程 CI 产物，不能复用本地哈希宣称 Actions 同一签名。
+
+## 远端 CI 修复记录
+
+首次 GitHub PR 运行在 SDK 配置阶段失败：setup-android 的默认 packages 包含已下架的 `tools`，尚未执行 Gradle。已显式设置 `packages: platform-tools`，禁用冗长许可证正文输出，并固定 Ubuntu 24.04 runner；没有跳过或忽略测试。后续结果以 PR 最新 Checks 为准。
