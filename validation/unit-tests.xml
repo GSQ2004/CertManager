@@ -1,0 +1,53 @@
+<?xml version='1.0' encoding='utf-8'?>
+<testsuites tests="40" failures="0" errors="0" skipped="0">
+  <testsuite name="com.certmanager.android.CertificateTests" tests="21" skipped="0" failures="0" errors="0" timestamp="2026-11-17T16:52:25.686Z" hostname="f3cfc3fb2894" time="0.783">
+    <properties />
+    <testcase name="deleteCannotProceedWhenBackupFails" classname="com.certmanager.android.CertificateTests" time="0.254" />
+    <testcase name="backupAtomicallyPreservesExactOriginalBytes" classname="com.certmanager.android.CertificateTests" time="0.102" />
+    <testcase name="deleteFailuresRetainVerifiedBackup" classname="com.certmanager.android.CertificateTests" time="0.023" />
+    <testcase name="certificatePathsRejectTraversalAndInvalidUsers" classname="com.certmanager.android.CertificateTests" time="0.002" />
+    <testcase name="fingerprintMatchesIndependentOpenSslValue" classname="com.certmanager.android.CertificateTests" time="0.004" />
+    <testcase name="backupDetectsByteAndMetadataTampering" classname="com.certmanager.android.CertificateTests" time="0.009" />
+    <testcase name="duplicatesUseCertificateAndAndroidUser" classname="com.certmanager.android.CertificateTests" time="0.001" />
+    <testcase name="corruptedBackupsCannotBeRestored" classname="com.certmanager.android.CertificateTests" time="0.045" />
+    <testcase name="parsesRealX509PemAndDer" classname="com.certmanager.android.CertificateTests" time="0.018" />
+    <testcase name="deleteRechecksRootAndBytesAfterConfirmation" classname="com.certmanager.android.CertificateTests" time="0.078" />
+    <testcase name="deletionMustBeObservedAndSettingsFallbackDoesNotMutate" classname="com.certmanager.android.CertificateTests" time="0.039" />
+    <testcase name="successfulDeletionIsVerified" classname="com.certmanager.android.CertificateTests" time="0.058" />
+    <testcase name="rejectsMultiplePemCertificates" classname="com.certmanager.android.CertificateTests" time="0.006" />
+    <testcase name="backupsRejectPathTraversal" classname="com.certmanager.android.CertificateTests" time="0.001" />
+    <testcase name="restoreFailuresAndCancellationRetainBackup" classname="com.certmanager.android.CertificateTests" time="0.021" />
+    <testcase name="restoreRejectsCrossProfileAndSystemBackups" classname="com.certmanager.android.CertificateTests" time="0.062" />
+    <testcase name="rejectsInvalidAndOversizedCertificate" classname="com.certmanager.android.CertificateTests" time="0.01" />
+    <testcase name="commandParametersAreConstrained" classname="com.certmanager.android.CertificateTests" time="0.022" />
+    <testcase name="pemExportRoundTrips" classname="com.certmanager.android.CertificateTests" time="0.002" />
+    <testcase name="deleteRequiresRootBeforeBackup" classname="com.certmanager.android.CertificateTests" time="0.005" />
+    <testcase name="deleteCannotTargetSystemCa" classname="com.certmanager.android.CertificateTests" time="0.0" />
+    <system-out />
+    <system-err />
+  </testsuite>
+  <testsuite name="com.certmanager.android.CleanupTests" tests="19" skipped="0" failures="0" errors="0" timestamp="2026-11-17T16:52:26.482Z" hostname="f3cfc3fb2894" time="0.68">
+    <properties />
+    <testcase name="systemAndModuleOnlyInventoryCannotBecomeCleanupTargets" classname="com.certmanager.android.CleanupTests" time="0.09" />
+    <testcase name="duplicateDetectionKeepsAllSourceEvidenceWithoutCountingApiMirrorTwice" classname="com.certmanager.android.CleanupTests" time="0.053" />
+    <testcase name="removedFileWithLostCoverageIsNotReportedAsVerifiedSuccess" classname="com.certmanager.android.CleanupTests" time="0.114" />
+    <testcase name="checkpointFailurePreventsAnyUninstall" classname="com.certmanager.android.CleanupTests" time="0.019" />
+    <testcase name="cancelledTicketCannotDeleteAndBackupsRemain" classname="com.certmanager.android.CleanupTests" time="0.006" />
+    <testcase name="rootRevokedAfterFirstRemovalPreventsSecondRemoval" classname="com.certmanager.android.CleanupTests" time="0.077" />
+    <testcase name="rebootReviewPersistsAcrossProcessRestartAndDetectsReappearingCa" classname="com.certmanager.android.CleanupTests" time="0.028" />
+    <testcase name="laterPreparationFailureRetainsEarlierBackupWithoutDeletingAnything" classname="com.certmanager.android.CleanupTests" time="0.013" />
+    <testcase name="rootRevocationStopsCleanupWithBackupsRetained" classname="com.certmanager.android.CleanupTests" time="0.046" />
+    <testcase name="corruptedLastBackupPreventsFirstDeletion" classname="com.certmanager.android.CleanupTests" time="0.023" />
+    <testcase name="partialSuccessAndSkippedProfilesAreReportedIndividually" classname="com.certmanager.android.CleanupTests" time="0.079" />
+    <testcase name="preparationBacksUpEverySourceBeforeAnyDeleteAndPreservesRawBytes" classname="com.certmanager.android.CleanupTests" time="0.02" />
+    <testcase name="reappearingTargetDuringCleanupNeverReportsSuccess" classname="com.certmanager.android.CleanupTests" time="0.017" />
+    <testcase name="moduleCommandsRejectTraversalAndNeverExecuteScripts" classname="com.certmanager.android.CleanupTests" time="0.014" />
+    <testcase name="backupFailurePreventsEveryUninstall" classname="com.certmanager.android.CleanupTests" time="0.039" />
+    <testcase name="scanReadFailureRemainsExplicitlyUnknown" classname="com.certmanager.android.CleanupTests" time="0.003" />
+    <testcase name="bootMarkerUnknownNeverClaimsRebootOrWarningResolution" classname="com.certmanager.android.CleanupTests" time="0.002" />
+    <testcase name="scannerClassifiesUsersSystemModulesAndDisabledRecords" classname="com.certmanager.android.CleanupTests" time="0.013" />
+    <testcase name="finalTargetChangedAfterConfirmationPreparationPreventsFirstDeletion" classname="com.certmanager.android.CleanupTests" time="0.02" />
+    <system-out />
+    <system-err />
+  </testsuite>
+</testsuites>

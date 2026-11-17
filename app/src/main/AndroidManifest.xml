@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries>
+        <intent><action android:name="com.android.settings.TRUSTED_CREDENTIALS" /></intent>
+        <intent><action android:name="android.settings.SECURITY_SETTINGS" /></intent>
+    </queries>
+    <application android:theme="@style/Theme.CertManager" android:label="@string/app_name"
+        android:icon="@drawable/ic_cert" android:allowBackup="false" android:supportsRtl="true"
+        android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules">
+        <receiver android:name=".CertAdminReceiver" android:permission="android.permission.BIND_DEVICE_ADMIN" android:exported="true">
+            <meta-data android:name="android.app.device_admin" android:resource="@xml/device_admin" />
+            <intent-filter><action android:name="android.app.action.DEVICE_ADMIN_ENABLED" /></intent-filter>
+        </receiver>
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

@@ -1,0 +1,27 @@
+.gradle/
+.kotlin/
+local.properties
+**/build/
+.idea/
+*.iml
+*.jks
+*.keystore
+*.key
+*.p12
+*.pfx
+.env
+.env.*
+*.apk
+*.aab
+*.apks
+*.cmb
+/backups/
+/certificates/
+# Only the explicitly generated public unit-test certificates are source fixtures.
+*.pem
+*.der
+*.crt
+*.cer
+!app/src/test/resources/test-ca.pem
+!app/src/test/resources/test-ca.der
+!app/src/test/resources/cleanup-ca.der

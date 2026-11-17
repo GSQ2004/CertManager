@@ -1,0 +1,3 @@
+package: com.certmanager.android
+permission: com.certmanager.android.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+uses-permission: name='com.certmanager.android.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'
