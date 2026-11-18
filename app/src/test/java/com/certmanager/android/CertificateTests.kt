@@ -40,7 +40,7 @@ class CertificateTests {
             fails { ShellPolicy.script(RootCommand.ListStore(path)) }
             fails { ShellPolicy.script(RootCommand.ReadCertificate(path)) }
         }
-        assertEquals("id -u", ShellPolicy.script(RootCommand.Identity))
+        assertEquals("/system/bin/id -u", ShellPolicy.script(RootCommand.Identity))
         assertTrue(ShellPolicy.script(RootCommand.ReadCertificate(record().locator)).contains("base64"))
         assertFalse(ShellPolicy.script(RootCommand.ReadCertificate(record().locator)).contains("rm "))
     }

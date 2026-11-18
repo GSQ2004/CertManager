@@ -51,6 +51,10 @@ import com.certmanager.android.domain.*
             Text(stringResource(R.string.cleanup_backup_state, state.backups.size), style = MaterialTheme.typography.bodySmall)
         } }
         state.cleanupHistory?.let { history ->
+            item { Text(stringResource(R.string.root_stage_counts, history.entries.sumOf { it.movedFiles }, history.entries.count { it.rebootRechecked })) }
+            item { Text(stringResource(if (history.warningGoneConfirmed) R.string.warning_confirmed else R.string.warning_unconfirmed))
+                TextButton(onClick = model::confirmWarningGone, enabled = !state.loading) { Text(stringResource(R.string.warning_confirm_action)) }
+            }
             item { HorizontalDivider(); Text(stringResource(R.string.cleanup_result), style = MaterialTheme.typography.titleLarge) }
             item { Text(stringResource(R.string.cleanup_result_counts,
                 history.entries.count { it.status == CleanupStatus.REMOVED }, history.entries.count { it.status == CleanupStatus.SKIPPED },
@@ -63,6 +67,7 @@ import com.certmanager.android.domain.*
                         SelectionContainer { Text(entry.fingerprint, style = MaterialTheme.typography.bodySmall) }
                         Text(stringResource(R.string.cleanup_saved_copies, entry.backupIds.size), style = MaterialTheme.typography.labelSmall)
                         if (entry.status == CleanupStatus.SKIPPED) Text(stringResource(R.string.cleanup_manual_reason), style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.root_stages, entry.backupVerified.toString(), entry.fileMoved.toString(), entry.activeRechecked.toString(), entry.rebootRechecked.toString()), style = MaterialTheme.typography.bodySmall)
                         if (entry.reason.isNotBlank()) Text(entry.reason, style = MaterialTheme.typography.bodySmall)
                     }
                 }
@@ -123,6 +128,7 @@ import com.certmanager.android.domain.*
     Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.medium) { Text(text, Modifier.padding(14.dp), style = MaterialTheme.typography.bodySmall) }
 }
 private fun statusLabel(status: CleanupStatus) = when (status) {
+    CleanupStatus.FILE_MOVED -> R.string.root_file_moved
     CleanupStatus.PENDING -> R.string.cleanup_status_pending; CleanupStatus.REMOVED -> R.string.cleanup_status_removed
     CleanupStatus.SKIPPED -> R.string.cleanup_status_skipped; CleanupStatus.FAILED -> R.string.cleanup_status_failed
     CleanupStatus.UNVERIFIED -> R.string.cleanup_status_unverified
@@ -145,7 +151,7 @@ private fun statusLabel(status: CleanupStatus) = when (status) {
                     Text(stringResource(R.string.cleanup_second_body, ticket.backupCount, ticket.targets.size,
                         ticket.targets.count { it.eligible }, ticket.targets.count { !it.eligible }))
                     ticket.targets.forEach { target ->
-                        Text("${target.record.userId} · ${target.record.name}\n${target.record.fingerprint}\n${target.captures.joinToString { it.backupId }}", style = MaterialTheme.typography.bodySmall)
+                        Text("${target.record.userId} · ${target.record.name}\n${target.record.fingerprint}\n${target.record.locator}\n${target.captures.joinToString { it.backupId }}", style = MaterialTheme.typography.bodySmall)
                     }
                     Row { Checkbox(acknowledged, { acknowledged = it }); Text(stringResource(R.string.cleanup_ack), Modifier.padding(top = 12.dp)) }
                 }

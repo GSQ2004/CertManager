@@ -12,11 +12,12 @@ interface CleanupGateway : TrustGateway {
     fun uninstallBlockReason(record: CertificateRecord): String
 }
 
-enum class CleanupStatus { PENDING, REMOVED, SKIPPED, FAILED, UNVERIFIED }
+enum class CleanupStatus { PENDING, REMOVED, FILE_MOVED, SKIPPED, FAILED, UNVERIFIED }
 data class CleanupEntry(val key: String, val fingerprint: String, val userId: Int,
-    val backupIds: List<String>, val status: CleanupStatus, val reason: String)
+    val backupIds: List<String>, val status: CleanupStatus, val reason: String,
+    val backupVerified: Boolean = true, val fileMoved: Boolean = false, val activeRechecked: Boolean = false, val rebootRechecked: Boolean = false, val movedFiles: Int = 0)
 data class CleanupHistory(val bootMarker: String?, val createdAt: Long,
-    val entries: List<CleanupEntry>, val systemFingerprints: Set<String>)
+    val entries: List<CleanupEntry>, val systemFingerprints: Set<String>, val warningGoneConfirmed: Boolean = false)
 data class CleanupReview(val remaining: Int, val targetedRemaining: List<String>, val reappeared: List<String>,
     val possibleInjection: List<String>, val rebootDetected: Boolean?, val duplicates: List<DuplicateFinding>)
 data class CleanupReport(val history: CleanupHistory, val inventory: ScanInventory, val review: CleanupReview)
@@ -31,12 +32,14 @@ data class CleanupProgress(val phase: CleanupPhase, val completed: Int, val tota
 object CleanupVerification {
     fun review(history: CleanupHistory, scan: ScanInventory): CleanupReview {
         val userKeys = scan.userCertificates.map { it.key }.toSet()
-        val removed = history.entries.filter { it.status == CleanupStatus.REMOVED }
+        val removed = history.entries.filter { it.status == CleanupStatus.REMOVED || it.fileMoved }
         val removedFps = removed.map { it.fingerprint }.toSet()
         val modules = scan.observations.filter { it.source == CertSource.MODULE }.map { it.fingerprint }.toSet()
         val newSystem = scan.records.filter { it.source == CertSource.SYSTEM }.map { it.fingerprint }.toSet() - history.systemFingerprints
         return CleanupReview(scan.userCertificates.size, history.entries.filter { it.key in userKeys }.map { it.key },
-            removed.filter { it.key in userKeys }.map { it.key },
+            removed.filter { entry ->
+                if (entry.fileMoved) scan.observations.any { it.key == entry.key && RootFilePolicy.eligible(it) } else entry.key in userKeys
+            }.map { it.key },
             ((modules intersect history.entries.map { it.fingerprint }.toSet()) + (newSystem intersect removedFps)).sorted(),
             if (history.bootMarker == null || scan.bootMarker == null) null else history.bootMarker != scan.bootMarker,
             scan.duplicates)
@@ -50,11 +53,13 @@ class CleanupHistoryStore(private val file: File) {
         val properties = Properties().apply {
             setProperty("version", "1"); setProperty("boot", history.bootMarker.orEmpty())
             setProperty("time", history.createdAt.toString()); setProperty("count", history.entries.size.toString())
-            setProperty("system", history.systemFingerprints.joinToString(","))
+            setProperty("system", history.systemFingerprints.joinToString(",")); setProperty("warningConfirmed", history.warningGoneConfirmed.toString())
             history.entries.forEachIndexed { i, entry ->
                 setProperty("$i.key", entry.key); setProperty("$i.fp", entry.fingerprint); setProperty("$i.user", entry.userId.toString())
                 setProperty("$i.backups", entry.backupIds.joinToString(",")); setProperty("$i.status", entry.status.name)
                 setProperty("$i.reason", entry.reason.take(2048))
+                setProperty("$i.backupVerified", entry.backupVerified.toString()); setProperty("$i.fileMoved", entry.fileMoved.toString())
+                setProperty("$i.movedFiles", entry.movedFiles.toString()); setProperty("$i.activeRechecked", entry.activeRechecked.toString()); setProperty("$i.rebootRechecked", entry.rebootRechecked.toString())
             }
         }
         check(file.parentFile!!.isDirectory || file.parentFile!!.mkdirs())
@@ -77,10 +82,12 @@ class CleanupHistoryStore(private val file: File) {
             val key = p.getProperty("$i.key"); require(key == "USER:$user:$fp")
             val ids = p.getProperty("$i.backups").split(',').filter { it.isNotEmpty() }
             ids.forEach { require(UUID.fromString(it).toString() == it) }
-            CleanupEntry(key, fp, user, ids, CleanupStatus.valueOf(p.getProperty("$i.status")), p.getProperty("$i.reason"))
+            CleanupEntry(key, fp, user, ids, CleanupStatus.valueOf(p.getProperty("$i.status")), p.getProperty("$i.reason"),
+                p.getProperty("$i.backupVerified", "true").toBoolean(), p.getProperty("$i.fileMoved", "false").toBoolean(),
+                p.getProperty("$i.activeRechecked", "false").toBoolean(), p.getProperty("$i.rebootRechecked", "false").toBoolean(), p.getProperty("$i.movedFiles", "0").toInt().also { require(it in 0..10000) })
         }
         return CleanupHistory(p.getProperty("boot").ifBlank { null }, p.getProperty("time").toLong(), entries,
-            p.getProperty("system").split(',').filter { it.isNotEmpty() }.toSet())
+            p.getProperty("system").split(',').filter { it.isNotEmpty() }.toSet(), p.getProperty("warningConfirmed", "false").toBoolean())
     }
 }
 
@@ -144,18 +151,25 @@ class CleanupCoordinator(private val gateway: CleanupGateway, private val backup
         }, ticket.inventory.records.filter { it.source == CertSource.SYSTEM }.map { it.fingerprint }.toSet())
         historyStore.save(history) // A failed durable checkpoint prevents starting deletion.
         ticket.targets.forEachIndexed { i, target ->
+            var movedFiles = 0
             val result = if (!target.eligible || !gateway.canUninstall(target.record)) {
                 CleanupStatus.SKIPPED to gateway.uninstallBlockReason(target.record)
             } else try {
                 check(gateway.rootAuthorized()) { "Root authorization lost" }
                 revalidate(target)
-                gateway.uninstall(target.record)
+                val fileTargets = target.captures.filter { it.record.fileMetadata != null && RootFilePolicy.eligible(it.record) }
+                if (fileTargets.isEmpty()) gateway.uninstall(target.record)
+                else fileTargets.forEach { gateway.uninstall(it.record); movedFiles++ }
                 val scan = gateway.scanInventory()
-                val absent = !gateway.installed(target.record.fingerprint, target.record.userId) &&
+                val rootMove = target.captures.any { it.record.fileMetadata != null } && RootFilePolicy.eligible(target.record)
+                val fileAbsent = scan.observations.none { it.key == target.record.key && RootFilePolicy.eligible(it) } &&
+                    scan.coverage.any { it.location == target.record.locator.substringBeforeLast('/') && it.readable }
+                val absent = !rootMove && !gateway.installed(target.record.fingerprint, target.record.userId) &&
                     scan.userCertificates.none { it.key == target.record.key } && scan.evidenceReadable(target.record)
-                if (absent) CleanupStatus.REMOVED to "" else CleanupStatus.UNVERIFIED to "Removal not verified in all original sources; backup retained"
+                if (rootMove && fileAbsent) CleanupStatus.FILE_MOVED to "Root file-level uninstall: active file absent; reboot and review required; warning not confirmed"
+                else if (absent) CleanupStatus.REMOVED to "" else CleanupStatus.UNVERIFIED to "Removal not verified in all original sources; backup retained"
             } catch (e: Exception) { CleanupStatus.FAILED to (e.message ?: e.javaClass.simpleName) }
-            history = history.copy(entries = history.entries.mapIndexed { index, entry -> if (index == i) entry.copy(status = result.first, reason = result.second) else entry })
+            history = history.copy(entries = history.entries.mapIndexed { index, entry -> if (index == i) entry.copy(status = result.first, reason = result.second, fileMoved = movedFiles > 0, activeRechecked = movedFiles > 0, movedFiles = movedFiles) else entry })
             historyStore.save(history) // Stop if checkpoint persistence fails; never replay automatically.
             progress(CleanupProgress(CleanupPhase.DELETE, i + 1, ticket.targets.size))
         }

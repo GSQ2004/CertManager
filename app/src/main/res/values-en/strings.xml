@@ -117,7 +117,7 @@
     <string name="cleanup_result">Last confirmed cleanup</string>
     <string name="cleanup_result_counts">Removed %1$d · Skipped %2$d · Failed %3$d · Unverified / interrupted %4$d</string>
     <string name="cleanup_saved_copies">Source backups: %1$d</string>
-    <string name="cleanup_manual_reason">No verified in-app uninstall method for this source. Check the fingerprint in certificate settings within the original Android profile and remove it manually. No direct file or database deletion.</string>
+    <string name="cleanup_manual_reason">Automatic removal safety checks were not satisfied; see the reason below. Use system certificate settings in the original profile. Unknown sources and module files remain unchanged.</string>
     <string name="cleanup_review_counts">Visible remaining user CAs: %1$d\nOriginal targets still present: %2$d\nRemoved targets reappearing: %3$d\nPossible reinjection fingerprints: %4$d\nRepeated locations / cross-profile fingerprints: %5$d</string>
     <string name="cleanup_reboot_detected">The system boot count changed since the cleanup checkpoint.</string>
     <string name="cleanup_same_boot">No reboot detected relative to the latest cleanup checkpoint.</string>
@@ -132,7 +132,7 @@
     <string name="cleanup_disabled_count">Disabled records (diagnostics only): %1$d</string>
     <string name="cleanup_coverage">Show / hide store coverage and disabled records</string>
     <string name="cleanup_duplicate">Matching fingerprint: %1$s\nUsers: %2$s\nLocations: %3$s\nMay be aliases, mounts or cross-profile copies. Does not authorize file deletion.</string>
-    <string name="cleanup_safe">Safe automatic removal: public device management API</string>
+    <string name="cleanup_safe">Available: Root file move or device management API (rechecked on confirmation)</string>
     <string name="cleanup_unsafe">No safe automatic removal: read only / Settings required</string>
     <string name="cleanup_status_pending">Incomplete / interrupted; scan again</string>
     <string name="cleanup_status_removed">Rechecked: target user CA removed</string>
@@ -146,4 +146,19 @@
     <string name="cleanup_second_body">Verified source backups: %1$d. User CAs covered: %2$d.\nAutomatic removal: %3$d; skipped: %4$d. Users, fingerprints and backup IDs appear below.\n\nOnly these confirmed targets can be processed. All backups and fingerprints are rechecked before the first uninstall.</string>
     <string name="cleanup_ack">I reviewed the scope and understand the impact on VPNs and enterprise networks.</string>
     <string name="cleanup_execute">Confirm cleanup</string>
+    <string name="root_uninstall">Root file-level uninstall</string>
+    <string name="root_candidate">Traditional file · requires Root runtime validation</string>
+    <string name="root_file_moved">Active file moved; reboot and review. Warning disappearance is unconfirmed</string>
+    <string name="root_restored">File, UID/GID, mode and SELinux context restored and verified; reboot may be needed</string>
+    <string name="root_restore">Confirm Root file-level restore</string>
+    <string name="root_restore_risk">Backup and target profile validated. Restore expands trust. It publishes atomically only if the target is absent and no duplicate exists. Permission or SELinux failures abort; backups remain. Pending real-device validation.</string>
+    <string name="root_uninstall_risk">Root file-level uninstall moves the CA to a root-only quarantine in the same user directory. Original bytes and metadata are backed up and verified; identity and fingerprint are rechecked at commit. Trust caches may remain until reboot. No automatic reboot or warning-disappearance claim. App implementation pending device validation.</string>
+    <string name="root_stage_counts">Files moved: %1$d · Post-reboot checks passed: %2$d</string>
+    <string name="root_stages">Backup verified %1$s · File moved %2$s · Active store rechecked %3$s · Post-reboot rechecked %4$s</string>
+    <string name="warning_unconfirmed">HyperOS warning disappearance has not been confirmed by the user</string>
+    <string name="warning_confirmed">User manually confirmed that the HyperOS warning disappeared (not automatically detected)</string>
+    <string name="warning_confirm_action">I verified that the warning disappeared</string>
+    <string name="public_key">Public key algorithm</string>
+    <string name="extended_usage">Extended Key Usage</string>
+    <string name="backup_all">Back up all user CAs</string>
 </resources>

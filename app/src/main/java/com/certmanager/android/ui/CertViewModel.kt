@@ -30,7 +30,11 @@ import kotlinx.coroutines.withContext
     val cleanupTicket: CleanupTicket? = null,
     val cleanupProgress: CleanupProgress? = null,
     val cleanupHistory: CleanupHistory? = null,
-    val cleanupReview: CleanupReview? = null
+    val cleanupReview: CleanupReview? = null,
+    val rootRestoreTicket: RootRestoreTicket? = null,
+    val rootContext: String = "",
+    val suAvailable: Boolean = false,
+    val deviceDescription: String = ""
 )
 data class InstallCandidate(val raw: ByteArray, val fingerprint: String, val backupId: String? = null)
 sealed interface UiEvent {
@@ -72,8 +76,13 @@ class CertViewModel(application: Application) : AndroidViewModel(application) {
         val backups = repository.backups.inspect()
         val history = repository.cleanupHistory.load()
         val safe = snapshot.inventory.userCertificates.filter(repository::canUninstall).map { it.key }.toSet()
+        val rootContext = if (repository.root.authorized) repository.root.execute(RootCommand.Context).output.trim() else "—"
+        val hyperOs = runCatching { ProcessBuilder("/system/bin/getprop", "ro.mi.os.version.name").start().let { p ->
+            try { if (p.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)) p.inputStream.bufferedReader().readText().trim() else "" } finally { p.destroy() }
+        } }.getOrDefault("")
         mutable.update { old -> old.copy(records = snapshot.records, users = snapshot.users, notes = snapshot.notes + backups.errors,
-            backups = backups.valid, inventory = snapshot.inventory, safeCleanupKeys = safe,
+            backups = backups.valid, inventory = snapshot.inventory, safeCleanupKeys = safe, rootContext = rootContext, suAvailable = repository.root.available(),
+            deviceDescription = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} · ${android.os.Build.DISPLAY} · $hyperOs",
             cleanupHistory = history, cleanupReview = history?.let { CleanupVerification.review(it, snapshot.inventory) }, selected = old.selected?.let { s -> snapshot.records.find { it.key == s.key } }) }
     }
     fun refresh() = work { load() }
@@ -94,6 +103,13 @@ class CertViewModel(application: Application) : AndroidViewModel(application) {
     }
     fun prepareDelete(record: CertificateRecord) = work {
         val ticket = repository.operations.prepareDelete(record)
+        if (ticket.record.fileMetadata != null && ticket.direct) {
+            val scan = mutable.value.inventory
+            repository.cleanupHistory.save(CleanupHistory(scan?.bootMarker, System.currentTimeMillis(),
+                listOf(CleanupEntry(ticket.record.key, ticket.record.fingerprint, ticket.record.userId, listOf(ticket.backupId),
+                    CleanupStatus.PENDING, "Backup completed and verified; awaiting explicit confirmation")),
+                scan?.records.orEmpty().filter { it.source == CertSource.SYSTEM }.map { it.fingerprint }.toSet()))
+        }
         load(); mutable.update { it.copy(deleteTicket = ticket) }
     }
     fun cancelDelete() {
@@ -106,7 +122,15 @@ class CertViewModel(application: Application) : AndroidViewModel(application) {
         work {
             val result = repository.operations.deleteConfirmed(ticket)
             load()
-            if (result == DeleteResult.REMOVED) {
+            if (result == DeleteResult.ROOT_FILE_MOVED) {
+                val scan = mutable.value.inventory ?: error("Inventory unavailable; backup retained")
+                val history = CleanupHistory(scan.bootMarker, System.currentTimeMillis(), listOf(CleanupEntry(ticket.record.key,
+                    ticket.record.fingerprint, ticket.record.userId, listOf(ticket.backupId), CleanupStatus.FILE_MOVED,
+                    "Root file-level uninstall; reboot required; warning not confirmed", fileMoved = true, activeRechecked = true, movedFiles = 1)),
+                    scan.records.filter { it.source == CertSource.SYSTEM }.map { it.fingerprint }.toSet())
+                repository.cleanupHistory.save(history); load()
+                channel.send(UiEvent.Message("root_file_moved"))
+            } else if (result == DeleteResult.REMOVED) {
                 check(mutable.value.inventory?.userCertificates?.none { it.key == ticket.record.key } == true &&
                     mutable.value.inventory?.evidenceReadable(ticket.record) == true) { "Residual user CA found after removal; backup retained" }
                 channel.send(UiEvent.Message("removed"))
@@ -128,7 +152,7 @@ class CertViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     fun export(record: CertificateRecord, pem: Boolean) = work {
-        channel.send(UiEvent.Export(if (pem) Certificates.pem(record.certificate) else record.raw,
+        channel.send(UiEvent.Export(if (pem) Certificates.pem(record.certificate) else record.certificate.encoded,
             "ca-${record.fingerprint.replace(":", "").take(16)}.${if (pem) "pem" else "cer"}", "application/x-x509-ca-cert"))
     }
     fun exportBackup(backup: Backup, archive: Boolean) = work {
@@ -140,6 +164,11 @@ class CertViewModel(application: Application) : AndroidViewModel(application) {
         check(repository.rootAuthorized()) { "Root authorization required; backup retained" }
         load()
         val verified = repository.backups.load(backup.id)
+        if (verified.fileMetadata != null) {
+            val ticket = repository.rootRestorer.prepare(verified.id)
+            mutable.update { it.copy(rootRestoreTicket = ticket) }
+            return@work
+        }
         val bytes = repository.operations.prepareRestore(verified, mutable.value.records, repository.currentUserId)
         mutable.update { it.copy(installCandidate = InstallCandidate(bytes, verified.fingerprint, verified.id)) }
     }
@@ -148,9 +177,13 @@ class CertViewModel(application: Application) : AndroidViewModel(application) {
         if (archive) {
             val backup = BackupCodec.decode(bytes)
             // Imported archives are validated and retained privately before attempting restoration.
-            val record = CertificateRecord(backup.certificate, backup.raw, backup.source, backup.userId, backup.locator)
+            val record = CertificateRecord(backup.certificate, backup.raw, backup.source, backup.userId, backup.locator, fileMetadata = backup.fileMetadata)
             val local = repository.backups.create(record)
             load()
+            if (local.fileMetadata != null) {
+                mutable.update { it.copy(rootRestoreTicket = repository.rootRestorer.prepare(local.id)) }
+                return@work
+            }
             val der = repository.operations.prepareRestore(local, mutable.value.records, repository.currentUserId)
             mutable.update { it.copy(installCandidate = InstallCandidate(der, local.fingerprint, local.id)) }
         } else {
@@ -209,10 +242,47 @@ class CertViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+    fun cancelRootRestore() { repository.rootRestorer.cancel(); mutable.update { it.copy(rootRestoreTicket = null) } }
+    fun confirmRootRestore() {
+        val ticket = mutable.value.rootRestoreTicket ?: return
+        mutable.update { it.copy(rootRestoreTicket = null) }
+        work {
+            repository.rootRestorer.confirmed(ticket)
+            load(); channel.send(UiEvent.Message("root_restored"))
+        }
+    }
+    fun confirmWarningGone() = work {
+        val history = repository.cleanupHistory.load() ?: error("No cleanup history")
+        repository.cleanupHistory.save(history.copy(warningGoneConfirmed = true)); load()
+    }
+    fun backupAll() = work {
+        val records = mutable.value.inventory?.userCertificates.orEmpty()
+        var failed = 0
+        records.forEach { record ->
+            runCatching {
+                val fresh = repository.reread(record) ?: error("Certificate unavailable")
+                check(fresh.fingerprint == record.fingerprint)
+                repository.backups.create(fresh)
+            }.onFailure { failed++ }
+        }
+        load()
+        check(failed == 0) { "Batch backup: ${records.size - failed} saved, $failed failed; successful backups retained" }
+        channel.send(UiEvent.Message("backed_up"))
+    }
     fun reviewAfterReboot() = work {
         check(repository.rootAuthorized()) { "Grant Root before reviewing all accessible stores" }
         mutable.update { it.copy(cleanupProgress = CleanupProgress(CleanupPhase.VERIFY, 0, 0)) }
         load()
+        val scan = mutable.value.inventory!!
+        val history = mutable.value.cleanupHistory
+        if (history != null && mutable.value.cleanupReview?.rebootDetected == true) {
+            repository.cleanupHistory.save(history.copy(entries = history.entries.map { entry ->
+                val readable = scan.coverage.any { it.location == "/data/misc/user/${entry.userId}/cacerts-added" && it.readable } &&
+                    scan.coverage.none { it.location.startsWith("/data/misc/user/${entry.userId}/cacerts-added/") && !it.readable }
+                entry.copy(rebootRechecked = entry.fileMoved && readable && scan.userCertificates.none { it.key == entry.key })
+            }))
+            load()
+        }
         mutable.update { it.copy(cleanupProgress = CleanupProgress(CleanupPhase.DONE, 0, 0)) }
     }
     fun openSettings() = work { channel.send(UiEvent.Settings()) }

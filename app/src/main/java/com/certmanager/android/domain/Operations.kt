@@ -12,7 +12,7 @@ interface TrustGateway {
 
 class DeleteTicket internal constructor(val token: String, val record: CertificateRecord,
     val backupId: String, val direct: Boolean, val expiresAt: Long)
-enum class DeleteResult { REMOVED, SYSTEM_SETTINGS_REQUIRED }
+enum class DeleteResult { REMOVED, ROOT_FILE_MOVED, SYSTEM_SETTINGS_REQUIRED }
 
 /** Preparation runs before the UI confirmation. Commit rechecks all conditions afterwards. */
 class CertificateOperations(private val gateway: TrustGateway, private val backups: BackupStore) {
@@ -41,6 +41,10 @@ class CertificateOperations(private val gateway: TrustGateway, private val backu
         check(fresh.fingerprint == backup.fingerprint && fresh.raw.contentEquals(backup.raw)) { "Certificate changed; backup retained" }
         if (!gateway.canUninstall(fresh)) return DeleteResult.SYSTEM_SETTINGS_REQUIRED
         gateway.uninstall(fresh)
+        if (fresh.fileMetadata != null && RootFilePolicy.eligible(fresh)) {
+            check(gateway.reread(fresh) == null) { "CA reappeared; backup retained" }
+            return DeleteResult.ROOT_FILE_MOVED
+        }
         check(!gateway.installed(fresh.fingerprint, fresh.userId) && gateway.reread(fresh) == null) {
             "Removal could not be verified; backup retained"
         }

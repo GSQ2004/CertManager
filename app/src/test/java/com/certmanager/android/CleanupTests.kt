@@ -24,6 +24,7 @@ class CleanupTests {
         val failed = mutableSetOf<String>(); val skipped = mutableSetOf<String>()
         var root = true; var deletes = 0; var boot = "boot:1"; var denyVerification = false
         var disappearOnRead: String? = null
+        var failedLocator: String? = null
         var afterDelete: (() -> Unit)? = null
         override fun rootAuthorized() = root
         override fun reread(record: CertificateRecord): CertificateRecord? = if (record.locator == disappearOnRead) null else records.find { it.locator == record.locator }
@@ -31,8 +32,8 @@ class CleanupTests {
         override fun uninstallBlockReason(record: CertificateRecord) = "Unsupported profile / no verified uninstall API"
         override fun uninstall(record: CertificateRecord) {
             deletes++
-            if (record.key in failed) error("Simulated service failure")
-            records.removeAll { it.key == record.key }; afterDelete?.invoke()
+            if (record.key in failed || record.locator == failedLocator) error("Simulated service failure")
+            records.removeAll { if (record.fileMetadata != null) it.locator == record.locator else it.key == record.key }; afterDelete?.invoke()
         }
         override fun installed(fingerprint: String, userId: Int) = records.any { it.source == CertSource.USER && it.fingerprint == fingerprint && it.userId == userId }
         override fun scanInventory(): ScanInventory {
@@ -201,6 +202,31 @@ class CleanupTests {
         val ticket = coordinator.prepare()
         fails { coordinator.executeConfirmed(ticket) }
         assertEquals(0, h.gateway.deletes); assertEquals(1, h.backups.list().size)
+    }
+
+    private val fileMetadata = FileMetadata("1\t1\t2\t1000\t1000\t420\t1000\t1\t0\t1\t0\t1\t3\tu:object_r:system_data_file:s0")
+    @Test fun rootBatchPartialFailurePreservesEachBackupAndDoesNotClaimWarningGone() {
+        val first = record().copy(fileMetadata = fileMetadata)
+        val second = record("cleanup-ca.der", filename = "fedcba98.0").copy(fileMetadata = fileMetadata)
+        val h = harness(listOf(first, second)); h.gateway.failed += second.key
+        val report = h.coordinator.executeConfirmed(h.coordinator.prepare())
+        assertEquals(CleanupStatus.FILE_MOVED, report.history.entries.first().status)
+        assertEquals(CleanupStatus.FAILED, report.history.entries.last().status)
+        assertEquals(1, report.history.entries.sumOf { it.movedFiles })
+        assertFalse(report.history.warningGoneConfirmed)
+        assertEquals(2, h.backups.list().size)
+    }
+    @Test fun sameFingerprintCopiesAreProcessedIndividuallyAndPartialMoveIsRecorded() {
+        val first = record().copy(fileMetadata = fileMetadata)
+        val path = "/data/misc/user/0/cacerts-added/012345ab.1"
+        val second = first.copy(locator = path, origins = listOf(path))
+        val h = harness(listOf(first, second)); h.gateway.failedLocator = path
+        val report = h.coordinator.executeConfirmed(h.coordinator.prepare())
+        val entry = report.history.entries.single()
+        assertEquals(CleanupStatus.FAILED, entry.status)
+        assertTrue(entry.fileMoved); assertEquals(1, entry.movedFiles)
+        assertEquals(2, entry.backupIds.size); assertEquals(2, h.backups.list().size)
+        assertEquals(1, report.inventory.userCertificates.size)
     }
 
 }
