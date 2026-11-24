@@ -26,8 +26,7 @@ local.properties
 !app/src/test/resources/test-ca.der
 !app/src/test/resources/cleanup-ca.der
 
-# Explicitly requested distributable; all other APKs remain ignored.
-!downloads/CertManager-debug.apk
+/downloads/
 
 # Native intermediates and private operation data
 **/.cxx/

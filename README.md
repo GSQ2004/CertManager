@@ -76,17 +76,15 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Android Studio 打开工程根目录并同步。首次需要访问 Google Maven、Maven Central 和 Gradle 分发服务。APK：`app/build/outputs/apk/debug/app-debug.apk`；测试与 Lint 报告：`app/build/reports/`。未执行的真机检查不能由构建结果代替，见 [VALIDATION.md](VALIDATION.md)。
 
-## GitHub Actions 与 APK 下载
+## APK 下载与发布
 
-工作流 [android.yml](.github/workflows/android.yml) 支持 push / pull_request / workflow_dispatch，配置 JDK 17、SDK / NDK / CMake 和 Gradle 缓存，执行 JVM 测试、Lint、assembleDebug；任何失败都会使工作流失败。
+从 [GitHub Releases](https://github.com/GSQ2004/CertManager/releases) 下载对应版本的 APK 和同页的 `SHA256SUMS.txt`。在下载目录运行 `sha256sum -c SHA256SUMS.txt` 可核对文件完整性。
 
-打开本仓库 **Actions → Android build → 成功运行 → Artifacts → `CertManager-debug-apk`**。包内包含实际生成的 Debug APK 和 `APK-SHA256SUMS.txt`；流程先检查 APK 存在，记录字节数与 SHA-256。`CertManager-verification-reports` 保存测试/Lint 报告及失败日志。私有仓库的 Artifact 需要有权限的 GitHub 账号访问。具体本次运行链接见 PR / 最终交付记录。
+普通推送、拉取请求和手动运行会执行单元测试、Lint 和 APK 构建。发布时，先更新应用版本，再推送对应的版本标签（例如 `v1.2.2`）。标签工作流通过检查后，会把 APK 和校验文件直接上传到 GitHub 预发布页面。Actions 保留构建日志和验证报告。
 
-`downloads/CertManager-debug.apk` 是保留的 **1.1.0 历史产物**，不包含本次 Root 文件级功能；请下载本次成功工作流 Artifact。没有把新 APK、用户证书、备份或设备日志提交到 Git。
+### 签名与升级
 
-### Release 签名预留
-
-Debug 使用本地自动生成的调试签名，与 Release 分离。不同云端运行的 Debug 密钥可能不同，若提示签名不兼容，请先导出全部私有备份，再卸载旧调试版并安装新包；不要为升级丢弃证书备份。Release 只有同时提供以下环境变量才使用独立签名：`CERTMANAGER_KEYSTORE`、`CERTMANAGER_STORE_PASSWORD`、`CERTMANAGER_KEY_ALIAS`、`CERTMANAGER_KEY_PASSWORD`。未来发布工作流应从 GitHub Secrets 解码密钥到 runner 临时目录再设置变量，不打印 Secrets；当前没有 Release 工作流、没有创建 GitHub Release，也不把未签名产物宣称为正式安装包。
+当前预发布 APK 使用 CI 调试签名。不同构建的签名可能不同，若系统提示签名不兼容，请先导出全部私有备份，再卸载旧版并安装新包。独立 Release 签名的配置见 [app/build.gradle.kts](app/build.gradle.kts)。
 
 ## 测试、结构与截图
 
