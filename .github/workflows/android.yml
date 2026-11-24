@@ -52,3 +52,24 @@ jobs:
             app/build/reports/
             app/build/test-results/
           if-no-files-found: warn
+  publish-preview:
+    if: github.event_name == 'push' && github.ref == 'refs/tags/v1.2.1'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: CertManager-debug-apk
+      - name: Verify and publish preview APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha256sum -c APK-SHA256SUMS.txt
+          cp app/build/outputs/apk/debug/app-debug.apk CertManager-1.2.1-debug.apk
+          sha256sum CertManager-1.2.1-debug.apk > SHA256SUMS.txt
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease \
+            --title "CertManager 1.2.1 调试预发布版" \
+            --notes "改进 PEM 和 DER 单证书校验，支持带 BOM 和 Windows 换行的 PEM。此 APK 使用 CI 调试签名，尚未做真机验证。若签名与旧版不一致，请先导出私有备份再更换安装。" \
+            CertManager-1.2.1-debug.apk SHA256SUMS.txt

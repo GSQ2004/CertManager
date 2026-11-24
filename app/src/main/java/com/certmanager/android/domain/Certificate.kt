@@ -31,19 +31,25 @@ data class CertificateRecord(
 }
 
 object Certificates {
+    private const val PEM_BEGIN = "-----BEGIN CERTIFICATE-----"
+    private const val PEM_END = "-----END CERTIFICATE-----"
+
     fun parse(raw: ByteArray): X509Certificate {
         require(raw.isNotEmpty() && raw.size <= MAX_CERT_BYTES) { "Invalid certificate size" }
-        if (raw.first() == '-'.code.toByte()) {
-            val text = raw.toString(Charsets.US_ASCII).trim()
-            require(text.startsWith("-----BEGIN CERTIFICATE-----") && text.endsWith("-----END CERTIFICATE-----") &&
-                "-----BEGIN CERTIFICATE-----".toRegex().findAll(text).count() == 1 && !text.contains("PRIVATE KEY")) {
+        val der = if (raw.first() == 0x30.toByte()) raw else {
+            val text = raw.toString(Charsets.UTF_8).removePrefix("\uFEFF").trim(' ', '\t', '\r', '\n')
+            require(text.startsWith(PEM_BEGIN) && text.endsWith(PEM_END)) {
                 "Expected a single PEM certificate"
             }
+            val body = text.substring(PEM_BEGIN.length, text.length - PEM_END.length)
+            Base64.getDecoder().decode(body.filterNot { it == ' ' || it == '\t' || it == '\r' || it == '\n' })
         }
-        // A single certificate only; private keys and certificate bundles are never imported.
-        val input = ByteArrayInputStream(raw)
+        require(der.firstOrNull() == 0x30.toByte()) { "Expected DER certificate data" }
+        val input = ByteArrayInputStream(der)
         val cert = CertificateFactory.getInstance("X.509").generateCertificate(input) as X509Certificate
-        require(input.readBytes().all { it.toInt().toChar().isWhitespace() }) { "Expected one X.509 certificate" }
+        // Preserve the previously accepted trailing whitespace on binary certificate files.
+        require(if (der === raw) input.readBytes().all { it.toInt().toChar().isWhitespace() }
+                else input.available() == 0) { "Expected one X.509 certificate" }
         return cert
     }
     fun fingerprint(der: ByteArray): String = digest(der).chunked(2).joinToString(":")

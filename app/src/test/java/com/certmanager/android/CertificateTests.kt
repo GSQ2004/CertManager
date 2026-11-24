@@ -30,6 +30,23 @@ class CertificateTests {
         fails { Certificates.parse(bytes() + byteArrayOf(1, 2, 3)) }
     }
     @Test fun rejectsMultiplePemCertificates() { fails { Certificates.parse(bytes("test-ca.pem") + bytes("test-ca.pem")) } }
+    @Test fun acceptsPemWithWhitespaceAndWindowsLineEndings() {
+        val pem = bytes("test-ca.pem").decodeToString().lines().joinToString("\r\n")
+        assertArrayEquals(bytes(), Certificates.parse(" \t\r\n$pem\n".toByteArray()).encoded)
+        assertArrayEquals(bytes(), Certificates.parse("\uFEFF$pem".toByteArray()).encoded)
+        assertArrayEquals(bytes(), Certificates.parse(bytes() + "\r\n".toByteArray()).encoded)
+    }
+    @Test fun rejectsExtraObjectsInsideAndOutsidePemEnvelope() {
+        val pem = bytes("test-ca.pem").decodeToString()
+        val bundle = java.util.Base64.getEncoder().encodeToString(bytes() + bytes())
+        listOf(
+            "unrelated data\n$pem",
+            "\n-----BEGIN PRIVATE KEY-----\nAA==\n-----END PRIVATE KEY-----\n$pem",
+            "\n$pem$pem",
+            "-----BEGIN CERTIFICATE-----\n$bundle\n-----END CERTIFICATE-----"
+        ).forEach { fails { Certificates.parse(it.toByteArray()) } }
+        fails { Certificates.parse(bytes() + bytes()) }
+    }
     @Test fun fingerprintMatchesIndependentOpenSslValue() {
         assertEquals("74:C9:87:28:A9:EA:F1:55:6E:41:8A:68:B7:E2:B8:0B:B5:48:7C:71:55:7D:38:B4:D1:3C:F9:E3:46:E4:08:97", Certificates.fingerprint(Certificates.parse(bytes()).encoded))
         assertEquals("BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD", Certificates.digest("abc".toByteArray()))

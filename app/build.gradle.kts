@@ -15,8 +15,8 @@ android {
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         externalNativeBuild { cmake { arguments += "-DANDROID_STL=c++_static" } }
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 4
+        versionName = "1.2.1"
     }
     // Optional release signing is separate from debug and only activates when all secret inputs exist.
     val releaseStore = providers.environmentVariable("CERTMANAGER_KEYSTORE").orNull
